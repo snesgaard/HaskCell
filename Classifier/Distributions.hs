@@ -14,11 +14,12 @@ data Gaussian a = Gaussian{
                             nFactor :: a --normalization factor
                           }
 
-instance MatrixElement a => (Distribution a) (Matrix a) where
-    likelihood x d = 1.0
-
-class Constant c where
-  getConstant :: c
-
-instance Constant (Matrix Float) where
-  getConstant = matrix (3,3) (\(i,j)->1.0)
+instance Distribution (Gaussian Float) (Matrix Float) where
+  likelihood x d =
+    let f = nFactor d
+        u = mean d
+        ie = maybe (error "Inverse covariance is non-existent") id $ invCovariance d
+        xu = x - u
+        xut = transpose xu
+        pot = at (-0.5 * xut * ie * xu) (0,0)
+    in f * (exp pot)
