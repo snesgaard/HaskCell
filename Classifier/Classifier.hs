@@ -1,15 +1,15 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Classifier where
 
 import Prelude
-import Data.Matrix
+import Numeric.Matrix
+import Distributions (Distribution, likelihood)
 import qualified Data.Map as Map
 
 type ClassTag = Integer
 type Prior = Float
-
-class Distribution d where
-  likelihood :: Matrix a -> d -> Float --Outputs the likelihood of an input vector
 
 data Stub = PositiveStub | NegativeStub
 
@@ -20,23 +20,33 @@ instance Show Stub where
   show PositiveStub = "PositiveStub"
   show NegativeStub = "NegativeStub"
 
-instance Distribution Stub where
+instance Distribution Stub (Matrix a) where
   likelihood m PositiveStub = 1.0
   likelihood m NegativeStub = 0.0
 
-class Classifier c where
-  classify :: Matrix a -> c -> Maybe ClassTag --Input should be of dim (m x 1)
+class Classifier c i where
+  classify :: i -> c -> Maybe ClassTag --Input should be of dim (m x 1)
 
-newtype SupervisedBayes d = SupervisedBayes{ classDist :: [(ClassTag, Prior, d)] } deriving Show --Map containing class label in first index and secodn pair is a classifier primitive with prior
 
-instance (Distribution d) => Classifier (SupervisedBayes d) where
-  classify m =  fst . foldr findMax (Nothing, 0.0) . fmap classLikelihood . classDist
+-- Implementation code for supervised bayes classifier type
+newtype SupervisedBayes d = SupervisedBayes{ classDist :: (Map.Map ClassTag (Prior, d)) } deriving Show --Map containing class label in first index and secodn pair is a classifier primitive with prior
+
+instance (Distribution d i) => Classifier (SupervisedBayes d) i where
+  classify m =  fst . Map.foldrWithKey findMax (Nothing, 0.0) . Map.map classLikelihood . classDist
     where
-      classLikelihood (c, p, cd) = (c, p * likelihood m cd)
-      findMax (c, p) (cf, pf) = if p > pf then (Just c, p) else (cf, pf)
+      classLikelihood (p, cd) = (p * likelihood m cd)
+      findMax c p (cf, pf) = if p > pf then (Just c, p) else (cf, pf)
 
-trainSupervisedBayes :: (Distribution d) => Matrix a -> [ClassTag] -> (Matrix a -> d) -> SupervisedBayes d
-trainSupervisedBayes m c t = SupervisedBayes [(1, 0, t m)]
+incrementSample :: MatrixElement a => (ClassTag, Matrix a) -> Map.Map ClassTag (Matrix a) -> Map.Map ClassTag (Matrix a)
+incrementSample (c, mc) m = 
+  let sm = maybe mc (addRow mc) $ Map.lookup c m
+  in Map.insert c sm m
+  where
+    addRow a b = a <-> b
+
+--The number of rows in the matrix must match the number of entries in the class tag list
+divideSamples :: MatrixElement a => [(ClassTag, Matrix a)] -> Map.Map ClassTag (Matrix a)
+divideSamples = foldr incrementSample Map.empty
 
 incrementTag :: ClassTag -> Map.Map ClassTag Integer -> Map.Map ClassTag Integer
 incrementTag c m =
@@ -51,6 +61,13 @@ naivePriorEstimate c =
   where
     countTag = foldr incrementTag Map.empty
 
+--input needs to be generic here
+trainSupervisedBayes :: (Distribution d i, MatrixElement a) => [(ClassTag, Matrix a)] -> (Matrix a -> d) -> SupervisedBayes d
+trainSupervisedBayes s t =
+  let priors = naivePriorEstimate $ fmap fst s
+      samples = divideSamples s
+  in SupervisedBayes $ Map.intersectionWith (\p m -> (p, t m)) priors samples
+
 
 stubBayes :: SupervisedBayes Stub
-stubBayes = SupervisedBayes [(1, 0.5, PositiveStub), (2, 0.5, NegativeStub)]
+stubBayes = SupervisedBayes $ Map.fromList [(1, (0.5, PositiveStub)), (2, (0.5, NegativeStub))]

@@ -1,21 +1,24 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Distributions where
 
 import Numeric.Matrix
 
-class Distribution d where
-  likelihood :: Matrix Float -> d -> Float --Outputs the likelihood of an input vector
+class Distribution d i where
+  likelihood :: i -> d -> Float --Outputs the likelihood of an input vector
 
-data Gaussian = Gaussian{
-                            covariance :: Matrix Float, --this is an nxn matrix
-                            invCovariance :: Maybe (Matrix Float), --containst he inverse of the covariance matrix, if it exists
-                            mean :: Matrix Float, --this is a nx1 matrix/vector
-                            nFactor :: Float --normalization factor
+data Gaussian a = Gaussian{
+                            covariance :: Matrix a, --this is an nxn matrix
+                            invCovariance :: Maybe (Matrix a), --containst he inverse of the covariance matrix, if it exists
+                            mean :: Matrix a, --this is a nx1 matrix/vector
+                            nFactor :: a --normalization factor
                           }
 
-instance Distribution Gaussian where
-  likelihood x d =
-    let xu = (x - u)
-    in 1.0
-    where
-      u = mean d
+instance MatrixElement a => (Distribution a) (Matrix a) where
+    likelihood x d = 1.0
+
+class Constant c where
+  getConstant :: c
+
+instance Constant (Matrix Float) where
+  getConstant = matrix (3,3) (\(i,j)->1.0)
