@@ -4,8 +4,8 @@ module Distributions where
 
 import Numeric.Matrix
 
-class Distribution d i where
-  likelihood :: i -> d -> Float --Outputs the likelihood of an input vector
+class Distribution d i o where
+  likelihood :: i -> d -> o --Outputs the likelihood of an input vector
 
 data Gaussian a = Gaussian{
                             covariance :: Matrix a, --this is an nxn matrix
@@ -14,7 +14,7 @@ data Gaussian a = Gaussian{
                             nFactor :: a --normalization factor
                           }
 
-instance Distribution (Gaussian Float) (Matrix Float) where
+instance Distribution (Gaussian Float) (Matrix Float) Float where
   likelihood x d =
     let f = nFactor d
         u = mean d
